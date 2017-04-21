@@ -10,7 +10,7 @@
 package com.facebook.stetho.inspector.database;
 
 import android.annotation.TargetApi;
-import com.tencent.mmdb.database.SQLiteDatabase;
+import com.tencent.wcdb.database.SQLiteDatabase;
 import android.os.Build;
 import android.support.annotation.IntDef;
 

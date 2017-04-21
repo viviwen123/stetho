@@ -9,8 +9,8 @@
 
 package com.facebook.stetho.inspector.database;
 
-import com.tencent.mmdb.database.SQLiteDatabase;
-import com.tencent.mmdb.database.SQLiteException;
+import com.tencent.wcdb.database.SQLiteDatabase;
+import com.tencent.wcdb.database.SQLiteException;
 
 import java.io.File;
 

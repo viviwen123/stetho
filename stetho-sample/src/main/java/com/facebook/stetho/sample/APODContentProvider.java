@@ -18,8 +18,8 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.OperationApplicationException;
 import android.database.Cursor;
-import com.tencent.mmdb.database.SQLiteDatabase;
-import com.tencent.mmdb.database.SQLiteOpenHelper;
+import com.tencent.wcdb.database.SQLiteDatabase;
+import com.tencent.wcdb.database.SQLiteOpenHelper;
 import android.net.Uri;
 
 public class APODContentProvider extends ContentProvider {
