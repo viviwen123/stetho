@@ -10,6 +10,7 @@
 package com.facebook.stetho.inspector.elements.android;
 
 import android.app.Dialog;
+import android.graphics.Rect;
 import android.view.View;
 
 import com.facebook.stetho.common.Accumulator;
@@ -20,17 +21,20 @@ import com.facebook.stetho.common.android.FragmentCompat;
 import com.facebook.stetho.inspector.elements.AbstractChainedDescriptor;
 import com.facebook.stetho.inspector.elements.AttributeAccumulator;
 import com.facebook.stetho.inspector.elements.ChainedDescriptor;
+import com.facebook.stetho.inspector.elements.ComputedStyleAccumulator;
 import com.facebook.stetho.inspector.elements.Descriptor;
 import com.facebook.stetho.inspector.elements.DescriptorMap;
 import com.facebook.stetho.inspector.elements.NodeType;
 import com.facebook.stetho.inspector.elements.StyleAccumulator;
+import com.facebook.stetho.inspector.elements.StyleRuleNameAccumulator;
 
 import javax.annotation.Nullable;
 
 final class DialogFragmentDescriptor
-    extends Descriptor implements ChainedDescriptor, HighlightableDescriptor {
+    extends Descriptor<Object>
+    implements ChainedDescriptor<Object>, HighlightableDescriptor<Object> {
   private final DialogFragmentAccessor mAccessor;
-  private Descriptor mSuper;
+  private Descriptor<? super Object> mSuper;
 
   public static DescriptorMap register(DescriptorMap map) {
     maybeRegister(map, FragmentCompat.getSupportLibInstance());
@@ -42,7 +46,7 @@ final class DialogFragmentDescriptor
     if (compat != null) {
       Class<?> dialogFragmentClass = compat.getDialogFragmentClass();
       LogUtil.d("Adding support for %s", dialogFragmentClass);
-      map.register(dialogFragmentClass, new DialogFragmentDescriptor(compat));
+      map.registerDescriptor(dialogFragmentClass, new DialogFragmentDescriptor(compat));
     }
   }
 
@@ -51,7 +55,7 @@ final class DialogFragmentDescriptor
   }
 
   @Override
-  public void setSuper(Descriptor superDescriptor) {
+  public void setSuper(Descriptor<? super Object> superDescriptor) {
     Util.throwIfNull(superDescriptor);
 
     if (superDescriptor != mSuper) {
@@ -117,21 +121,51 @@ final class DialogFragmentDescriptor
 
   @Nullable
   @Override
-  public View getViewForHighlighting(Object element) {
+  public View getViewAndBoundsForHighlighting(Object element, Rect bounds) {
     final Descriptor.Host host = getHost();
+    Dialog dialog = null;
+    HighlightableDescriptor descriptor = null;
+
     if (host instanceof AndroidDescriptorHost) {
-      Dialog dialog = mAccessor.getDialog(element);
-      return ((AndroidDescriptorHost) host).getHighlightingView(dialog);
+      dialog = mAccessor.getDialog(element);
+      descriptor = ((AndroidDescriptorHost) host).getHighlightableDescriptor(dialog);
     }
 
-    return null;
+    return descriptor == null
+        ? null
+        : descriptor.getViewAndBoundsForHighlighting(dialog, bounds);
+  }
+
+  @Nullable
+  @Override
+  public Object getElementToHighlightAtPosition(Object element, int x, int y, Rect bounds) {
+    final Descriptor.Host host = getHost();
+    Dialog dialog = null;
+    HighlightableDescriptor descriptor = null;
+
+    if (host instanceof AndroidDescriptorHost) {
+      dialog = mAccessor.getDialog(element);
+      descriptor = ((AndroidDescriptorHost) host).getHighlightableDescriptor(dialog);
+    }
+
+    return descriptor == null
+        ? null
+        : descriptor.getElementToHighlightAtPosition(dialog, x, y, bounds);
   }
 
   @Override
-  public void getStyles(Object element, StyleAccumulator styles) {
+  public void getStyleRuleNames(Object element, StyleRuleNameAccumulator accumulator) {
   }
 
   @Override
-  public void getAccessibilityStyles(Object element, StyleAccumulator accumulator) {
+  public void getStyles(Object element, String ruleName, StyleAccumulator accumulator) {
+  }
+
+  @Override
+  public void setStyle(Object element, String ruleName, String name, String value) {
+  }
+
+  @Override
+  public void getComputedStyles(Object element, ComputedStyleAccumulator styles) {
   }
 }

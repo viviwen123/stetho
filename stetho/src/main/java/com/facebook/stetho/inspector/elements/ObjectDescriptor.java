@@ -11,7 +11,7 @@ package com.facebook.stetho.inspector.elements;
 
 import com.facebook.stetho.common.Accumulator;
 
-public final class ObjectDescriptor extends Descriptor {
+public final class ObjectDescriptor extends Descriptor<Object> {
   @Override
   public void hook(Object element) {
   }
@@ -53,10 +53,18 @@ public final class ObjectDescriptor extends Descriptor {
   }
 
   @Override
-  public void getStyles(Object element, StyleAccumulator accumulator) {
+  public void getStyleRuleNames(Object element, StyleRuleNameAccumulator accumulator) {
   }
 
   @Override
-  public void getAccessibilityStyles(Object element, StyleAccumulator accumulator) {
+  public void getStyles(Object element, String ruleName, StyleAccumulator accumulator) {
+  }
+
+  @Override
+  public void setStyle(Object element, String ruleName, String name, String value) {
+  }
+
+  @Override
+  public void getComputedStyles(Object element, ComputedStyleAccumulator accumulator) {
   }
 }

@@ -141,16 +141,28 @@ public final class Document extends ThreadBoundProxy {
     mDocumentProvider.setAttributesAsText(element, text);
   }
 
-  public void getElementStyles(Object element, StyleAccumulator styleAccumulator) {
+  public void getElementStyleRuleNames(Object element, StyleRuleNameAccumulator accumulator) {
     NodeDescriptor nodeDescriptor = getNodeDescriptor(element);
 
-    nodeDescriptor.getStyles(element, styleAccumulator);
+    nodeDescriptor.getStyleRuleNames(element, accumulator);
   }
 
-  public void getElementAccessibilityStyles(Object element, StyleAccumulator styleAccumulator) {
+  public void getElementStyles(Object element, String ruleName, StyleAccumulator accumulator) {
     NodeDescriptor nodeDescriptor = getNodeDescriptor(element);
 
-    nodeDescriptor.getAccessibilityStyles(element, styleAccumulator);
+    nodeDescriptor.getStyles(element, ruleName, accumulator);
+  }
+
+  public void setElementStyle(Object element, String ruleName, String name, String value) {
+    NodeDescriptor nodeDescriptor = getNodeDescriptor(element);
+
+    nodeDescriptor.setStyle(element, ruleName, name, value);
+  }
+
+  public void getElementComputedStyles(Object element, ComputedStyleAccumulator styleAccumulator) {
+    NodeDescriptor nodeDescriptor = getNodeDescriptor(element);
+
+    nodeDescriptor.getComputedStyles(element, styleAccumulator);
   }
 
   public DocumentView getDocumentView() {
@@ -340,7 +352,7 @@ public final class Document extends ThreadBoundProxy {
         Long.toString(deltaMs),
         isEmpty ? " (no changes)" : "");
   }
-  
+
   private void applyDocumentUpdate(final ShadowDocument.Update docUpdate) {
     // TODO: it'd be nice if we could delegate our calls into mPeerManager.sendNotificationToPeers()
     //       to a background thread so as to offload the UI from JSON serialization stuff

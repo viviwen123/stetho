@@ -9,13 +9,11 @@
 
 package com.facebook.stetho.inspector.elements.android;
 
-import android.view.View;
-
 import com.facebook.stetho.inspector.elements.Descriptor;
 
 import javax.annotation.Nullable;
 
 interface AndroidDescriptorHost extends Descriptor.Host {
   @Nullable
-  View getHighlightingView(@Nullable Object element);
+  HighlightableDescriptor getHighlightableDescriptor(@Nullable Object element);
 }

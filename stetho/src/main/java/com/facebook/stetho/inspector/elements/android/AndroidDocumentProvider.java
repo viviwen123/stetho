@@ -14,6 +14,7 @@ import android.app.Application;
 import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Rect;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,9 +26,9 @@ import com.facebook.stetho.common.Accumulator;
 import com.facebook.stetho.common.Predicate;
 import com.facebook.stetho.common.ThreadBound;
 import com.facebook.stetho.common.Util;
-import com.facebook.stetho.common.android.ViewUtil;
 import com.facebook.stetho.inspector.elements.DocumentProvider;
 import com.facebook.stetho.inspector.elements.Descriptor;
+import com.facebook.stetho.inspector.elements.DescriptorProvider;
 import com.facebook.stetho.inspector.elements.DescriptorMap;
 import com.facebook.stetho.inspector.elements.DocumentProviderListener;
 import com.facebook.stetho.inspector.elements.NodeDescriptor;
@@ -43,6 +44,9 @@ final class AndroidDocumentProvider extends ThreadBoundProxy
     implements DocumentProvider, AndroidDescriptorHost {
   private static final int INSPECT_OVERLAY_COLOR = 0x40FFFFFF;
   private static final int INSPECT_HOVER_COLOR = 0x404040ff;
+
+  private final Rect mHighlightingBoundsRect = new Rect();
+  private final Rect mHitRect = new Rect();
 
   private final Application mApplication;
   private final DescriptorMap mDescriptorMap;
@@ -71,7 +75,10 @@ final class AndroidDocumentProvider extends ThreadBoundProxy
     }
   };
 
-  public AndroidDocumentProvider(Application application, ThreadBound enforcer) {
+  public AndroidDocumentProvider(
+      Application application,
+      List<DescriptorProvider> descriptorProviders,
+      ThreadBound enforcer) {
     super(enforcer);
 
     mApplication = Util.throwIfNull(application);
@@ -79,19 +86,25 @@ final class AndroidDocumentProvider extends ThreadBoundProxy
 
     mDescriptorMap = new DescriptorMap()
         .beginInit()
-        .register(Activity.class, new ActivityDescriptor())
-        .register(AndroidDocumentRoot.class, mDocumentRoot)
-        .register(Application.class, new ApplicationDescriptor())
-        .register(Dialog.class, new DialogDescriptor());
+        .registerDescriptor(Activity.class, new ActivityDescriptor())
+        .registerDescriptor(AndroidDocumentRoot.class, mDocumentRoot)
+        .registerDescriptor(Application.class, new ApplicationDescriptor())
+        .registerDescriptor(Dialog.class, new DialogDescriptor())
+        .registerDescriptor(Object.class, new ObjectDescriptor())
+        .registerDescriptor(TextView.class, new TextViewDescriptor())
+        .registerDescriptor(View.class, new ViewDescriptor())
+        .registerDescriptor(ViewGroup.class, new ViewGroupDescriptor())
+        .registerDescriptor(Window.class, new WindowDescriptor());
+
     DialogFragmentDescriptor.register(mDescriptorMap);
-    FragmentDescriptor.register(mDescriptorMap)
-        .register(Object.class, new ObjectDescriptor())
-        .register(TextView.class, new TextViewDescriptor())
-        .register(View.class, new ViewDescriptor())
-        .register(ViewGroup.class, new ViewGroupDescriptor())
-        .register(Window.class, new WindowDescriptor())
-        .setHost(this)
-        .endInit();
+    FragmentDescriptor.register(mDescriptorMap);
+
+    for (int i = 0, size = descriptorProviders.size(); i < size; ++i) {
+      final DescriptorProvider descriptorProvider = descriptorProviders.get(i);
+      descriptorProvider.registerDescriptor(mDescriptorMap);
+    }
+
+    mDescriptorMap.setHost(this).endInit();
 
     mHighlighter = ViewHighlighter.newInstance();
     mInspectModeHandler = new InspectModeHandler();
@@ -138,12 +151,24 @@ final class AndroidDocumentProvider extends ThreadBoundProxy
   public void highlightElement(Object element, int color) {
     verifyThreadAccess();
 
-    View highlightingView = getHighlightingView(element);
+    final HighlightableDescriptor descriptor = getHighlightableDescriptor(element);
+    if (descriptor == null) {
+      mHighlighter.clearHighlight();
+      return;
+    }
+
+    mHighlightingBoundsRect.setEmpty();
+    final View highlightingView =
+        descriptor.getViewAndBoundsForHighlighting(element, mHighlightingBoundsRect);
     if (highlightingView == null) {
       mHighlighter.clearHighlight();
-    } else {
-      mHighlighter.setHighlightedView(highlightingView, color);
+      return;
     }
+
+    mHighlighter.setHighlightedView(
+        highlightingView,
+        mHighlightingBoundsRect,
+        color);
   }
 
   @Override
@@ -196,29 +221,30 @@ final class AndroidDocumentProvider extends ThreadBoundProxy
 
   // AndroidDescriptorHost implementation
   @Override
-  public View getHighlightingView(Object element) {
+  @Nullable
+  public HighlightableDescriptor getHighlightableDescriptor(@Nullable Object element) {
     if (element == null) {
       return null;
     }
 
-    View highlightingView = null;
+    HighlightableDescriptor highlightableDescriptor = null;
     Class<?> theClass = element.getClass();
     Descriptor lastDescriptor = null;
-    while (highlightingView == null && theClass != null) {
+    while (highlightableDescriptor == null && theClass != null) {
       Descriptor descriptor = mDescriptorMap.get(theClass);
       if (descriptor == null) {
         return null;
       }
 
       if (descriptor != lastDescriptor && descriptor instanceof HighlightableDescriptor) {
-        highlightingView = ((HighlightableDescriptor) descriptor).getViewForHighlighting(element);
+        highlightableDescriptor = ((HighlightableDescriptor) descriptor);
       }
 
       lastDescriptor = descriptor;
       theClass = theClass.getSuperclass();
     }
 
-    return highlightingView;
+    return highlightableDescriptor;
   }
 
   private void getWindows(final Accumulator<Window> accumulator) {
@@ -313,17 +339,52 @@ final class AndroidDocumentProvider extends ThreadBoundProxy
 
       @Override
       public boolean onTouchEvent(MotionEvent event) {
-        if (getParent() instanceof View) {
-          final View parent = (View)getParent();
-          View view = ViewUtil.hitTest(parent, event.getX(), event.getY(), mViewSelector);
+        int x = (int) event.getX();
+        int y = (int) event.getY();
+        Object elementToHighlight = getParent();
+        while (true) {
+          final HighlightableDescriptor descriptor =
+              getHighlightableDescriptor(elementToHighlight);
 
-          if (event.getAction() != MotionEvent.ACTION_CANCEL) {
-            if (view != null) {
-              mHighlighter.setHighlightedView(view, INSPECT_HOVER_COLOR);
+          if (descriptor == null) {
+            break;
+          }
 
-              if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (mListener != null) {
-                  mListener.onInspectRequested(view);
+          mHitRect.setEmpty();
+          final Object element =
+              descriptor.getElementToHighlightAtPosition(elementToHighlight, x, y, mHitRect);
+
+          x -= mHitRect.left;
+          y -= mHitRect.top;
+
+          if (element == elementToHighlight) {
+            break;
+          }
+
+          elementToHighlight = element;
+        }
+
+        if (elementToHighlight != null) {
+          final HighlightableDescriptor descriptor =
+              getHighlightableDescriptor(elementToHighlight);
+
+          if (descriptor != null) {
+            final View viewToHighlight =
+                descriptor.getViewAndBoundsForHighlighting(
+                    elementToHighlight,
+                    mHighlightingBoundsRect);
+
+            if (event.getAction() != MotionEvent.ACTION_CANCEL) {
+              if (viewToHighlight != null) {
+                mHighlighter.setHighlightedView(
+                    viewToHighlight,
+                    mHighlightingBoundsRect,
+                    INSPECT_HOVER_COLOR);
+
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                  if (mListener != null) {
+                    mListener.onInspectRequested(elementToHighlight);
+                  }
                 }
               }
             }

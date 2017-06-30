@@ -31,6 +31,7 @@ import java.util.concurrent.CountDownLatch;
 
 public class APODRssFetcher {
   private static final String TAG = "APODRssFetcher";
+  
   private static final String APOD_RSS_URL = "https://apod.nasa.gov/apod.rss";
 
   private final ContentResolver mContentResolver;

@@ -10,6 +10,7 @@
 package com.facebook.stetho.inspector.elements.android;
 
 import android.app.Activity;
+import android.graphics.Rect;
 import android.view.View;
 import android.view.Window;
 
@@ -26,7 +27,7 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 final class ActivityDescriptor
-    extends AbstractChainedDescriptor<Activity> implements HighlightableDescriptor {
+    extends AbstractChainedDescriptor<Activity> implements HighlightableDescriptor<Activity> {
   @Override
   protected String onGetNodeName(Activity element) {
     String className = element.getClass().getName();
@@ -44,16 +45,38 @@ final class ActivityDescriptor
     }
   }
 
+  @Nullable
   @Override
-  public View getViewForHighlighting(Object element) {
+  public View getViewAndBoundsForHighlighting(Activity element, Rect bounds) {
     final Descriptor.Host host = getHost();
+    Window window = null;
+    HighlightableDescriptor descriptor = null;
+
     if (host instanceof AndroidDescriptorHost) {
-      Activity activity = (Activity)element;
-      Window window = activity.getWindow();
-      return ((AndroidDescriptorHost) host).getHighlightingView(window);
+      window = element.getWindow();
+      descriptor = ((AndroidDescriptorHost) host).getHighlightableDescriptor(window);
     }
 
-    return null;
+    return descriptor == null
+        ? null
+        : descriptor.getViewAndBoundsForHighlighting(window, bounds);
+  }
+
+  @Nullable
+  @Override
+  public Object getElementToHighlightAtPosition(Activity element, int x, int y, Rect bounds) {
+    final Descriptor.Host host = getHost();
+    Window window = null;
+    HighlightableDescriptor descriptor = null;
+
+    if (host instanceof AndroidDescriptorHost) {
+      window = element.getWindow();
+      descriptor = ((AndroidDescriptorHost) host).getHighlightableDescriptor(window);
+    }
+
+    return descriptor == null
+        ? null
+        : descriptor.getElementToHighlightAtPosition(window, x, y, bounds);
   }
 
   private static void getDialogFragments(

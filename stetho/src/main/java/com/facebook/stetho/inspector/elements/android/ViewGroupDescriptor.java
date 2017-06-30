@@ -9,6 +9,7 @@
 
 package com.facebook.stetho.inspector.elements.android;
 
+import android.graphics.Rect;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -21,7 +22,10 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-final class ViewGroupDescriptor extends AbstractChainedDescriptor<ViewGroup> {
+import javax.annotation.Nullable;
+
+final class ViewGroupDescriptor extends AbstractChainedDescriptor<ViewGroup>
+    implements HighlightableDescriptor<ViewGroup> {
 
   /**
    * This is a cache that maps from a View to the Fragment that contains it. If the View isn't
@@ -88,6 +92,36 @@ final class ViewGroupDescriptor extends AbstractChainedDescriptor<ViewGroup> {
       return childView;
     } else {
       return ((WeakReference<Object>) value).get();
+    }
+  }
+
+  @Override
+  @Nullable
+  public View getViewAndBoundsForHighlighting(ViewGroup element, Rect bounds) {
+    return element;
+  }
+
+  @Nullable
+  @Override
+  public Object getElementToHighlightAtPosition(ViewGroup element, int x, int y, Rect bounds) {
+    View hitChild = null;
+    for (int i = element.getChildCount() - 1; i >= 0; --i) {
+      final View childView = element.getChildAt(i);
+      if (isChildVisible(childView) &&
+          childView.getVisibility() == View.VISIBLE) {
+        childView.getHitRect(bounds);
+        if (bounds.contains(x, y)) {
+          hitChild = childView;
+          break;
+        }
+      }
+    }
+
+    if (hitChild != null) {
+      return hitChild;
+    } else {
+      bounds.set(0, 0, element.getWidth(), element.getHeight());
+      return element;
     }
   }
 }

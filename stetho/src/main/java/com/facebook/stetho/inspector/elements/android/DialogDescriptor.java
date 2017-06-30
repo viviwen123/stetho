@@ -10,6 +10,7 @@
 package com.facebook.stetho.inspector.elements.android;
 
 import android.app.Dialog;
+import android.graphics.Rect;
 import android.view.View;
 import android.view.Window;
 import com.facebook.stetho.common.Accumulator;
@@ -19,7 +20,7 @@ import com.facebook.stetho.inspector.elements.Descriptor;
 import javax.annotation.Nullable;
 
 final class DialogDescriptor
-    extends AbstractChainedDescriptor<Dialog> implements HighlightableDescriptor {
+    extends AbstractChainedDescriptor<Dialog> implements HighlightableDescriptor<Dialog> {
   @Override
   protected void onGetChildren(Dialog element, Accumulator<Object> children) {
     Window window = element.getWindow();
@@ -30,13 +31,35 @@ final class DialogDescriptor
 
   @Nullable
   @Override
-  public View getViewForHighlighting(Object element) {
+  public View getViewAndBoundsForHighlighting(Dialog element, Rect bounds) {
     final Descriptor.Host host = getHost();
+    Window window = null;
+    HighlightableDescriptor descriptor = null;
+
     if (host instanceof AndroidDescriptorHost) {
-      final Dialog dialog = (Dialog) element;
-      return ((AndroidDescriptorHost) host).getHighlightingView(dialog.getWindow());
+      window = element.getWindow();
+      descriptor = ((AndroidDescriptorHost) host).getHighlightableDescriptor(window);
     }
 
-    return null;
+    return descriptor == null
+        ? null
+        : descriptor.getViewAndBoundsForHighlighting(window, bounds);
+  }
+
+  @Nullable
+  @Override
+  public Object getElementToHighlightAtPosition(Dialog element, int x, int y, Rect bounds) {
+    final Descriptor.Host host = getHost();
+    Window window = null;
+    HighlightableDescriptor descriptor = null;
+
+    if (host instanceof AndroidDescriptorHost) {
+      window = element.getWindow();
+      descriptor = ((AndroidDescriptorHost) host).getHighlightableDescriptor(window);
+    }
+
+    return descriptor == null
+        ? null
+        : descriptor.getElementToHighlightAtPosition(window, x, y, bounds);
   }
 }

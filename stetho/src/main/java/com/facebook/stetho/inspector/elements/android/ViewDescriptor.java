@@ -9,18 +9,20 @@
 
 package com.facebook.stetho.inspector.elements.android;
 
-import android.support.v4.view.ViewCompat;
+import android.graphics.Rect;
 import android.view.View;
 import android.view.ViewDebug;
-import android.support.v4.view.accessibility.AccessibilityNodeInfoCompat;
 
 import com.facebook.stetho.common.ExceptionUtil;
 import com.facebook.stetho.common.LogUtil;
+import com.facebook.stetho.common.ReflectionUtil;
 import com.facebook.stetho.common.StringUtil;
 import com.facebook.stetho.common.android.ResourcesUtil;
 import com.facebook.stetho.inspector.elements.AbstractChainedDescriptor;
 import com.facebook.stetho.inspector.elements.AttributeAccumulator;
+import com.facebook.stetho.inspector.elements.ComputedStyleAccumulator;
 import com.facebook.stetho.inspector.elements.StyleAccumulator;
+import com.facebook.stetho.inspector.elements.StyleRuleNameAccumulator;
 import com.facebook.stetho.inspector.helper.IntegerFormatter;
 
 import javax.annotation.Nullable;
@@ -37,12 +39,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-final class ViewDescriptor extends AbstractChainedDescriptor<View> implements HighlightableDescriptor {
+final class ViewDescriptor extends AbstractChainedDescriptor<View>
+    implements HighlightableDescriptor<View> {
   private static final String ID_NAME = "id";
   private static final String NONE_VALUE = "(none)";
   private static final String NONE_MAPPING = "<no mapping>";
+  private static final String VIEW_STYLE_RULE_NAME = "<this_view>";
+  private static final String ACCESSIBILITY_STYLE_RULE_NAME = "Accessibility Properties";
 
   private final MethodInvoker mMethodInvoker;
+
+  private static final boolean sHasSupportNodeInfo;
+
+  static {
+    sHasSupportNodeInfo = ReflectionUtil.tryGetClassForName(
+        "android.support.v4.view.accessibility.AccessibilityNodeInfoCompat") != null;
+  }
 
   /**
    * NOTE: Only access this via {@link #getWordBoundaryPattern}.
@@ -156,94 +168,113 @@ final class ViewDescriptor extends AbstractChainedDescriptor<View> implements Hi
   }
 
   @Override
-  public View getViewForHighlighting(Object element) {
-    return (View) element;
+  @Nullable
+  public View getViewAndBoundsForHighlighting(View element, Rect bounds) {
+    return element;
+  }
+
+  @Nullable
+  @Override
+  public Object getElementToHighlightAtPosition(View element, int x, int y, Rect bounds) {
+    bounds.set(0, 0, element.getWidth(), element.getHeight());
+    return element;
   }
 
   @Override
-  protected void onGetStyles(View element, StyleAccumulator styles) {
+  protected void onGetStyleRuleNames(View element, StyleRuleNameAccumulator accumulator) {
+    accumulator.store(VIEW_STYLE_RULE_NAME, false);
+    if (sHasSupportNodeInfo) {
+      accumulator.store(ACCESSIBILITY_STYLE_RULE_NAME, false);
+    }
+  }
 
-    List<ViewCSSProperty> properties = getViewProperties();
-    for (int i = 0, size = properties.size(); i < size; i++) {
-      ViewCSSProperty property = properties.get(i);
-      try {
+  @Override
+  protected void onGetStyles(View element, String ruleName, StyleAccumulator accumulator) {
+    if (VIEW_STYLE_RULE_NAME.equals(ruleName)) {
+      List<ViewCSSProperty> properties = getViewProperties();
+      for (int i = 0, size = properties.size(); i < size; i++) {
+        ViewCSSProperty property = properties.get(i);
+        try {
+          getStyleFromValue(
+              element,
+              property.getCSSName(),
+              property.getValue(element),
+              property.getAnnotation(),
+              accumulator);
+        } catch (Exception e) {
+          if (e instanceof IllegalAccessException || e instanceof InvocationTargetException) {
+            LogUtil.e(e, "failed to get style property " + property.getCSSName() +
+                    " of element= " + element.toString());
+          } else {
+            throw ExceptionUtil.propagate(e);
+          }
+        }
+      }
+    } else if (ACCESSIBILITY_STYLE_RULE_NAME.equals(ruleName)) {
+      if (sHasSupportNodeInfo) {
+        boolean ignored = AccessibilityNodeInfoWrapper.getIgnored(element);
         getStyleFromValue(
             element,
-            property.getCSSName(),
-            property.getValue(element),
-            property.getAnnotation(),
-            styles);
-      } catch (Exception e) {
-        if (e instanceof IllegalAccessException || e instanceof InvocationTargetException) {
-          LogUtil.e(e, "failed to get style property " + property.getCSSName() +
-                  " of element= " + element.toString());
-        } else {
-          throw ExceptionUtil.propagate(e);
+            "ignored",
+            ignored,
+            null,
+            accumulator);
+
+        if (ignored) {
+          getStyleFromValue(
+              element,
+              "ignored-reasons",
+              AccessibilityNodeInfoWrapper.getIgnoredReasons(element),
+              null,
+              accumulator);
+        }
+
+        getStyleFromValue(
+            element,
+            "focusable",
+            !ignored,
+            null,
+            accumulator);
+
+        if (!ignored) {
+          getStyleFromValue(
+              element,
+              "focusable-reasons",
+              AccessibilityNodeInfoWrapper.getFocusableReasons(element),
+              null,
+              accumulator);
+
+          getStyleFromValue(
+              element,
+              "focused",
+              AccessibilityNodeInfoWrapper.getIsAccessibilityFocused(element),
+              null,
+              accumulator);
+
+          getStyleFromValue(
+              element,
+              "description",
+              AccessibilityNodeInfoWrapper.getDescription(element),
+              null,
+              accumulator);
+
+          getStyleFromValue(
+              element,
+              "actions",
+              AccessibilityNodeInfoWrapper.getActions(element),
+              null,
+              accumulator);
         }
       }
     }
   }
 
   @Override
-  protected void onGetAccessibilityStyles(View element, StyleAccumulator styles) {
-    AccessibilityNodeInfoCompat nodeInfo = AccessibilityNodeInfoCompat.obtain();
-    ViewCompat.onInitializeAccessibilityNodeInfo(element, nodeInfo);
-
-    boolean ignored = AccessibilityNodeInfoWrapper.getIgnored(nodeInfo, element);
-    getStyleFromValue(
-        element,
-        "ignored",
-        ignored,
-        null,
-        styles);
-
-    if (ignored) {
-      getStyleFromValue(
-          element,
-          "ignored-reasons",
-          AccessibilityNodeInfoWrapper.getIgnoredReasons(nodeInfo, element),
-          null,
-          styles);
-    }
-
-    getStyleFromValue(
-        element,
-        "focusable",
-        !ignored,
-        null,
-        styles);
-
-    if (!ignored) {
-      getStyleFromValue(
-          element,
-          "focusable-reasons",
-          AccessibilityNodeInfoWrapper.getFocusableReasons(nodeInfo, element),
-          null,
-          styles);
-
-      getStyleFromValue(
-          element,
-          "focused",
-          nodeInfo.isAccessibilityFocused(),
-          null,
-          styles);
-
-      getStyleFromValue(
-          element,
-          "description",
-          AccessibilityNodeInfoWrapper.getDescription(nodeInfo, element),
-          null,
-          styles);
-
-      getStyleFromValue(
-          element,
-          "actions",
-          AccessibilityNodeInfoWrapper.getActions(nodeInfo),
-          null,
-          styles);
-    }
-
-    nodeInfo.recycle();
+  protected void onGetComputedStyles(View element, ComputedStyleAccumulator styles) {
+    styles.store("left", Integer.toString(element.getLeft()));
+    styles.store("top", Integer.toString(element.getTop()));
+    styles.store("right", Integer.toString(element.getRight()));
+    styles.store("bottom", Integer.toString(element.getBottom()));
   }
 
   private static boolean canIntBeMappedToString(@Nullable ViewDebug.ExportedProperty annotation) {
